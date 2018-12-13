@@ -1,0 +1,383 @@
+commonfields:
+  id: 1947683d-f59f-4612-8d5a-f99c791344df
+  version: 53
+name: PopulateHuntingTable
+script: |+
+  # REF: 0105
+  # Author sean.ennis@rsa.com
+  # Project: Automate hunting in NetWitness
+
+  import json
+  import urllib
+  import random
+
+  productQueryString = ""
+  fullRefinedQueryString = ""
+  mdTable = ""
+
+  huntModel = demisto.executeCommand('Print', {'value': '${HuntingModel}'})
+  huntModelSpecial = demisto.executeCommand('Print', {'value': '${HuntingModelSpecial}'})
+  huntTable = demisto.executeCommand('Print', {'value': '${HuntingTable}'})
+  groupingDepthStr = demisto.executeCommand('Print', {'value': '${GroupingDepth}'})
+  groupingDepth = int(str(groupingDepthStr[0]['Contents']))
+  verbosityStr = demisto.executeCommand('Print', {'value': '${OutputVerbosity}'})
+  verbosity = int(str(verbosityStr[0]['Contents']))
+  queryURL = demisto.executeCommand('Print', {'value': '${QueryURL}'})[0]['Contents']
+  language = demisto.executeCommand('Print', {'value': '${Language}'})#[0]['Contents']
+  influencers = demisto.executeCommand('Print', {'value': '${Influencers}'})
+  influencers = eval(influencers[0]['Contents'])
+  nwoHost = demisto.args()['nwohost'];
+  imageHost = demisto.args()['imagehost'];
+
+
+  incID = demisto.executeCommand('Print', {'value': '${incident.id}'})
+  incID = int(incID[0]['Contents'])
+
+  ################### FUNCTION SORT GROUP ########################
+
+  def sort_group(group):
+      sortedgroup=[]
+      for row in group:
+          tmpRowDict = eval(row['Contents'])
+          sortedgroup.append(tmpRowDict)
+
+      sortedgroup = sorted(sortedgroup, key=lambda k: k['lookahead']['count'], reverse=True)
+      return sortedgroup
+
+  ################### FUNCTION build markdown table ###############
+  #Note: Would be nice to extract the query building to a dedicated function.
+
+  def build_markdown(dedupedSplitTable, huntModel, groupingDepth, huntModelSpecial, incID):
+      ignorePrint = []
+      productQueryString = ""
+      mdTable = ""
+      lookaheadString=""
+      refinedString=""
+      idsWithMD = {}
+      specialKeys = []
+      incidentID = incID
+      investigationID = 0
+      newTaskId = 100
+
+      for key in huntModelSpecial:
+          specialKeys.append(key['Contents'])
+
+      for group in dedupedSplitTable:
+
+          headerString = ""
+          firstgroupdict = eval(group[0]['Contents'])
+
+          # set header lanuage
+          words = []
+          for word in language:
+              words.append(word['Contents'])
+          # hack for now.. not sure why non-unique values are getting truncated
+          for i in range (10):
+              words.append(words[-1])
+          ####
+
+          for i in range (groupingDepth):
+              if str(words[i]).startswith("-"): #toggle header visibility
+                  if i==0:
+                      headerString += firstgroupdict[huntModel[i]['Contents']]
+                  else:
+                      headerString += " > " + firstgroupdict[huntModel[i]['Contents']]
+              else:
+                  header = str(words[i].replace("-",""))#words[i][0] = ""
+                  headerString += "   " + header + " " + firstgroupdict[huntModel[i]['Contents']]
+
+              ignorePrint.append(huntModel[i]['Contents']) # saving us from redundant columns
+
+          bufferSpaces = ""
+          for x in range(150 - len(headerString)):
+              bufferSpaces += "&nbsp;"
+
+          # build buffer for column width
+
+          # done build buffer
+          mdTable += "\n" + "![RSA](" + imageHost + "/rsa.png)" + "  " +  headerString + "&nbsp;![(?)](" + imageHost + "/tooltip.png \"Each table is organized by a configurable grouping depth, defined in the Hunting Model json source file. Analysts may prefer to have all hunting sections collapsed into a single table (depth of 0) or have it split to a very granular level (depth of 5 or greater). This is only an organizational tool.  In the table below you will see verbiage describing each hunt element using the language also defined in the Hunt Model json source file.  Hover over each link for details on the methodology for each item.  In some cases you may also see tag icons on the far right of the row.  This is the system telling you that, during the look ahead query period, it found certain characteristics that give context and prioritization to the rows.\")" + bufferSpaces + "|"
+          #mdTable += "Product Pivot" + "|"
+          mdTable += "Task Link|"
+          mdTable += "Owner|"
+          mdTable += "Result Count&nbsp;![(?)](" + imageHost + "/tooltip.png \"IF you see two values here, the first result represents the number of results after the query was refined to something more managable.  The full result count is still shown, and you have the option to pivot into the full set if you desire.\")|"
+          mdTable += "Refined By&nbsp;![(?)](" + imageHost + "/tooltip.png \"If the number of results exceed the threshold defined for a particular query, the system will try to intelligently pare down the results to something managable\")|"
+          if verbosity > 0:
+              mdTable += "Description" + "|"
+          mdTable += "\n|"
+          mdTable += ':-----|'
+          mdTable += ':-----|'
+          mdTable += ':-----|'
+          mdTable += ':-----:|'
+          mdTable += ':-----|'
+          mdTable += ':-----|'
+          mdTable += ':-----|'
+          mdTable += ':-----|'
+
+          #tmp hack
+       #   dots = ['inprogressdot.png','inprogressdot.png','inprogressdot.png','completedot.png','completedot.png','completedot.png']#,'nadot.png']
+          status = {'complete': 'completedot.png', 'incomplete': 'inprogressdot.png', 'noquery': 'nadot.png'}
+          #status = {'complete': 'tasklinkcomplete.png', 'incomplete': 'tasklink.png', 'noquery': 'nadot.png'}
+
+          sortedgroup = sort_group(group)
+
+          for row in sortedgroup:
+              rowDict = row#(row['Contents'])
+              mdTable += "\n|"
+              cString = ""
+              qString = ""
+              rqString = ""
+              dString = ""
+              lString = ""
+              tagString = ""
+              refinedString = ""
+              ownerString = ""
+
+              statuslight = status[rowDict['status']]
+
+              if rowDict['status'] != 'incomplete':
+                  cString += "~~"
+
+              runCount = 0 # to help with the language
+              wordIndex = 0
+
+              # build output string...
+              for headings in huntModel:
+                  fullRefinedQueryString = ""
+                  if headings['Contents'] not in ignorePrint:
+                      if headings['Contents'] == 'query':
+                          # Build the querystring based on the product perhaps  - call new function?
+                          qs = rowDict['query'].replace("'", "\'")
+                          qs = qs.replace("&", "%26")
+                          qs = qs.replace("|", "%7C")
+                          qs = qs.replace(" ", "%20")
+                          fullQueryString = queryURL + qs
+                          qString += "[![pivot](" + imageHost + "/pivot.png)](" + fullQueryString + ")"
+
+                          # build the refined query while here
+                          if 'refinedquery' in rowDict['lookahead']:
+                              qs = rowDict['lookahead']['refinedquery'].replace("'", "\'")
+                              qs = qs.replace("&", "%26")
+                              qs = qs.replace("|", "%7C")
+                              qs = qs.replace(" ", "%20")
+                              fullRefinedQueryString = queryURL + qs
+                              rqString += "[![pivot](" + imageHost + "/pivot.png)](" + fullRefinedQueryString + ")"
+
+                      elif headings['Contents'] == 'description':
+                          if verbosity > 0:
+                              #dString += "[-hover for details-](https://community.rsa.com/docs/DOC-62341" + " \"" + rowDict['description'] + "\")" + "|"
+                              dString += rowDict['description'] + "[&nbsp;&nbsp;(link)](https://community.rsa.com/docs/DOC-62341)" + "|"
+                          else:
+                              dString = ""
+
+                      elif rowDict[headings['Contents']] != "" and headings['Contents'] not in specialKeys:
+
+                          if runCount == 0: # first run, add status
+                              cString += "![IN PROGRESS](" + imageHost + "/"+statuslight+" \"In Progress\")"
+
+                          cString += "&nbsp;&nbsp;" + words[wordIndex].replace("-","") + "&nbsp;&nbsp;**" + str(rowDict[headings['Contents']]) + "**"
+                      runCount += 1
+                  wordIndex += 1
+
+              if verbosity == 0:
+                  cString += "[&nbsp;&nbsp;(hover for info)](https://community.rsa.com/docs/DOC-62341" + " \"" + rowDict['description'] + "\")"# + "|"
+
+              # Populate tag string with lookahead info
+              for key, val in rowDict['lookahead'].items():
+                  if "has_" in key:
+                      if val == 1:
+                          splitStr = key.split("has_", 2)
+
+                          iconLink = influencers[splitStr[1]]['icon']
+                          linkStr = ""
+                          valStr = ""
+                          tmpQueryKey = splitStr[1] + "_query"
+                          tmpValuesKey = splitStr[1] + "_values"
+
+                          # This loads up the query and values if we want to use in MD linkage.
+                          if tmpValuesKey in rowDict['lookahead']:
+                              valList = []
+                              valList = rowDict['lookahead'][tmpValuesKey]
+                              for value in valList:
+                                  valStr = '{'
+                                  for k,v in value.items():
+                                      valStr += k + ':'
+                                      valStr += str(v)
+                                      valStr += ','
+                                  valStr = valStr[:-1]
+                                  valStr += '},'
+                              valStr = valStr[:-1]
+
+                          if tmpQueryKey in rowDict['lookahead']:
+                              if rowDict['lookahead'][tmpQueryKey] != "":
+                                  linkStr = rowDict['lookahead'][tmpQueryKey]
+                                  linkStr = linkStr.replace("'", "\'")
+                                  linkStr = linkStr.replace("&", "%26")
+                                  linkStr = linkStr.replace("|", "%7C")
+                                  linkStr = linkStr.replace(" ", "%20")
+                                  fullRefinedQueryString = queryURL + linkStr
+
+                          tagString += "[![img](" + iconLink + " \""+ valStr +"\")](" + fullRefinedQueryString + ")"
+
+              cString += "&nbsp;&nbsp;&nbsp;" + tagString
+
+              # Set ID MD
+              idsWithMD[rowDict['id']] = cString
+              #cString now needs to get written to a task field...
+
+              if rowDict['status'] != 'incomplete':#statuslight=="nadot.png": ## TEMPORARY...
+                  cString += "~~" #mdTable += cString + "~~|"
+
+              mdTable += cString + "|"
+
+              #### Task link goes here #####
+              taskID = newTaskId
+
+              if 'investigationID' in rowDict:
+                  investigationID = rowDict['investigationID']
+              else:
+                  investigationID = 999
+
+
+
+              if rowDict['status'] == 'incomplete':
+                  taskIconLink = "" + imageHost + "/tasklink.png"
+                  #taskLink = nwoHost + "/#/WorkPlan/" + str(incidentID) + "-child-" + str(investigationID)
+                  taskLink = nwoHost + "/#/WorkPlan/" + str(investigationID)
+                  #taskStr = "Task ID: " + str(taskID) + " [![task](" + taskIconLink + ")](" + taskLink + ")" + "|"
+                  taskStr = "Investigation ID: " + str(investigationID) + " [![task](" + taskIconLink + ")](" + taskLink + ")"
+                  bufferSpaces = ""
+                  for x in range(50 - len(taskStr)):
+                      bufferSpaces += "&nbsp;"
+
+                  taskStr += bufferSpaces + "|"
+                  #+ bufferSpaces + "|"
+                  newTaskId += 1
+              else:
+                  bufferSpaces = ""
+                  for x in range(50):
+                      bufferSpaces += "&nbsp;"
+                  taskStr = bufferSpaces + "|"
+
+
+              mdTable += taskStr
+
+              # Owner column
+              if 'owner' in rowDict:
+                  mdTable += rowDict['owner'] + "|"
+              elif 'investigationID' in rowDict:
+                  mdTable += "unassigned|"
+              else:
+                  mdTable += "|"
+
+              # Lookahead column
+              if rowDict['lookahead']['count'] == -1:
+                  lookaheadString = "*no query*"
+              else:
+                  if 'refinedquery' in rowDict['lookahead']:
+                      #lookaheadString += "**" + str(rowDict['lookahead']['refinedcount']) + "**&nbsp;" + rqString
+                      lookaheadString = "**" + str(rowDict['lookahead']['refinedcount']) + "**&nbsp;" + rqString
+                      lookaheadString +="&nbsp;&nbsp;*(full count: "  + str(rowDict['lookahead']['count']) + "&nbsp;" + qString + ")*"
+                      tmpStr = rowDict['refineby'].split(',')
+                      refinedString += "*" + rowDict['lookahead']['refinedlogic'] + "*&nbsp;{"
+                      for key in tmpStr:
+                          refinedString += key + ','
+                      refinedString = refinedString[:-1]
+                      refinedString += "}"
+                  else:
+                      lookaheadString="**" + str(rowDict['lookahead']['count']) + "** " + qString
+                  #for key, val in rowDict['lookahead'].items():
+                  ##    lookaheadString += key + ": "
+                   #   lookaheadString += str(val) + "<br>"#lookaheadString += str(rowDict['lookahead']['count']) + " sessions"
+
+              #mdTable += refinedString + "|"
+              mdTable += lookaheadString + "|"
+              mdTable += refinedString + "|"
+
+              mdTable += dString
+          mdTable += "\n\n\n"
+
+      return mdTable, idsWithMD
+  ################### END FUNCTION ###############
+
+  ############## FUNCTION Split/Dedup Table ######
+  def dedup_split_table(huntTable, huntModel, groupingDepth):
+      splitTable = []
+      dedupedSplitTable = []
+
+      if groupingDepth > 0:  #need to split model into a few arrays of arrays
+          for row in huntTable:
+              rowdict = eval(row['Contents'])
+              if rowdict[huntModel[groupingDepth]['Contents']]:
+                  rowdicttmp = {}
+                  matchrowdicttmp = {}
+                  grouptmp = []
+                  for matchrow in huntTable:
+                      matchrowdict = eval(matchrow['Contents'])
+                      for i in range(groupingDepth):
+                          rowdicttmp[huntModel[i]['Contents']] = rowdict[huntModel[i]['Contents']]
+                          matchrowdicttmp[huntModel[i]['Contents']] = matchrowdict[huntModel[i]['Contents']]
+                      if rowdicttmp == matchrowdicttmp:
+                          grouptmp.append(matchrow)
+                  splitTable.append(grouptmp)
+          for x in splitTable:
+              if x not in dedupedSplitTable:
+                 dedupedSplitTable.append(x)
+      else:
+          dedupedSplitTable = huntTable
+
+      return dedupedSplitTable
+  #################### END FUNCTION ###################
+
+  dedupedSplitTable = []
+  dedupedSplitTable = dedup_split_table(huntTable, huntModel, groupingDepth)
+
+  #############
+  #
+  # The IDS for the link are all wrong... I think we need to set the taskID from the start, or else we need to update the task IDs with GenerateTasks so that they match...
+  #
+  ###############
+
+  mdTable, idMDMap = build_markdown(dedupedSplitTable, huntModel, groupingDepth, huntModelSpecial, incID)
+
+  updatedHuntTable = []
+  for hunt in huntTable:
+      tDict = eval(hunt['Contents'])
+      for hid,md in idMDMap.items():
+          if tDict['id'] == hid:
+              tDict['md'] = md.replace("&nbsp;", " ")
+      updatedHuntTable.append(tDict)
+
+  demisto.executeCommand('DeleteContext', {'key': 'huntinglabyrinth'})
+  demisto.executeCommand('setIncident', {'huntinglabyrinth': mdTable})
+  demisto.results({
+      'Type': entryTypes['note'],
+      'Contents': 'Created Markdown Table',
+      'ContentsFormat': formats['markdown'],
+      'EntryContext': {'huntinglabyrinth': mdTable}
+  })
+
+  # Clear old table
+  demisto.executeCommand('DeleteContext', {'key': 'HuntingTable'})
+  demisto.results({
+      'Type': entryTypes['note'],
+      'Contents': 'Updated Hunting Table with MD',
+      'ContentsFormat': formats['text'],
+      'EntryContext': {'HuntingTable': updatedHuntTable}
+  })
+
+type: python
+tags: []
+enabled: true
+args:
+- name: nwohost
+  required: true
+  description: eg. https://192.168.1.153 - the base URL of your NWO instance
+- name: imagehost
+  required: true
+  description: eg. http://192.168.1.514 - the base URL of the web server used to host
+    helper images and content
+outputs:
+- contextPath: huntinglabyrinth
+- contextPath: HuntingTable
+scripttarget: 0
+runonce: false

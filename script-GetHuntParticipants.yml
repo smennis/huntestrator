@@ -1,0 +1,63 @@
+commonfields:
+  id: 332301b4-11d3-41ed-8b65-46e335425468
+  version: 12
+name: GetHuntParticipants
+script: |
+  import json
+
+  # Step 1 - get users from Hunt Master
+  activeHunts = demisto.executeCommand("SearchIncidents", {'query':"type:Hunt -type:\"Hunt Item\" -status:closed"})
+  biggestID = 0
+  for hunt in activeHunts:
+      if hunt['Contents'][0]['id'] > biggestID:
+          biggestID = hunt['Contents'][0]['id']
+  incidentID = biggestID
+  #
+
+  res = demisto.executeCommand("getContext", {'id': incidentID});
+  huntingTable = []
+  huntingTable = res[0]['Contents']['context']['HuntingTable']
+
+  numComplete = 0
+  numIncomplete = 0
+  numInvalid = 0
+
+
+  ownerStats = {}
+
+  for hunt in huntingTable:
+      if 'owner' in hunt:
+          ownerStats[str(hunt['owner'])] = {}
+          ownerStats[str(hunt['owner'])]['complete'] = 0
+          ownerStats[str(hunt['owner'])]['active'] = 0
+
+
+  for hunt in huntingTable:
+      if 'owner' in hunt:
+          if hunt['status'] == 'complete':
+              ownerStats[str(hunt['owner'])]['complete'] += 1
+          elif hunt['status'] == 'incomplete':
+              ownerStats[str(hunt['owner'])]['active'] += 1
+
+  dataChart = []
+  for k in ownerStats:
+      tmpDict = {"Hunter": k, "Active Hunt Tasks": ownerStats[k]['active'], "Completed Hunt Tasks": ownerStats[k]['complete']}
+      dataChart.append(tmpDict)
+
+  #dataChart = [
+  #    {"Hunter": "admin", "Active Hunt Tasks": "15", "Completed Hunt Tasks": "4"},
+  #    {"Hunter": "Jimmy", "Active Hunt Tasks": "2", "Completed Hunt Tasks": "9"},
+  #    {"Hunter": "Sally", "Active Hunt Tasks": "7", "Completed Hunt Tasks": "1"}
+  #]
+
+  dataObject = {"total": 3, "data":dataChart}
+
+  dataString = json.dumps(dataObject)
+  demisto.results(dataString)
+  #demisto.results(res[0]['Contents']['context']['huntinglabyrinth'])
+type: python
+tags: []
+comment: 0105 This should be indexed
+enabled: true
+scripttarget: 0
+runonce: false

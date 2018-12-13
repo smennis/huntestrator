@@ -1,0 +1,288 @@
+commonfields:
+  id: 40a90cd2-e78a-4541-85ff-35313c511280
+  version: 15
+name: LoadHuntingJson
+script: |+
+  # REF: 0105
+  # Author sean.ennis@rsa.com
+  # Project: Automate hunting in NetWitness
+  # Script:  Load JSON from huntingcontent.json and create initial hunting ledger
+
+  import json
+  from collections import OrderedDict
+
+  res = []
+  #dArgs = {"network": 0, "logs": 0, "endpoint": 0,"jsonsource": demisto.args()["source"], "jsonmodelsource": demisto.args()["modelsource"]}
+  dArgs = {"jsonmodelsource": demisto.args()["modelsource"]}
+
+  ######################## FUNCTION Stamp with ID val #########
+  def id_stamp(huntingTable):
+      idnum = 0# starting at ID = 97 ... This is a horrible hack at the moment...
+      # not sure why we need this dedup logic at this point, but we do... to fix.
+      seen = set()
+      new_l = []
+      for d in huntingTable:
+          t = tuple(d.items())
+          if t not in seen:
+              seen.add(t)
+              new_l.append(d)
+      huntingTable = new_l
+
+      for hunt in huntingTable:
+          hunt['id'] = idnum
+          hunt['taskid'] = 999
+          idnum += 1
+          hunt['status'] = 'incomplete'
+
+      return huntingTable
+  ####################### END FUNCTION#########################
+
+  def flatten_dict(d):
+      def expand(key, value):
+          if isinstance(value, dict):
+              return [ (key + '.' + k, v) for k, v in flatten_dict(value)]#.items() ]
+          else:
+              return [ (key, value) ]
+
+      items = [ item for k, v in d.items() for item in expand(k, v) ]
+
+      return list(items)
+
+
+  ######################## BUILD BRANCH LIST #################
+  def build_branch_list(flattedHuntingJson):
+      for paths in flattenedHuntingJson:
+          tmpDict = {}
+          tl = []
+          fullpath = paths[0]#.split('.details.')
+          splitStr = fullpath.split('.details.')
+          branchpath = splitStr[0]
+          tmpkey = splitStr[1]
+          tmpval = paths[1]
+
+          tl.append(branchpath)
+          tmpDict[tmpkey] = tmpval
+          tl.append(tmpDict)
+
+          branchList.append(tl)
+      return branchList
+  #############################################################
+
+  ###################### MERGE DEDUP LIST #####################
+  def merge_dedup_branches(branchList):
+      newBranchList = []
+      dedupedList = []
+      for branch in branchList:
+          tmpBranch = []
+          tmpBranch.append(branch[0])
+          for branch2 in branchList:
+              if branch[0] == branch2[0]:
+                  for node in branch2[1:]:
+                      tmpBranch.append(node)
+                  if tmpBranch not in newBranchList:
+                      newBranchList.append(tmpBranch)
+
+      for thing in newBranchList:
+          if thing not in dedupedList:
+              dedupedList.append(thing)
+
+      return dedupedList
+  ############################################################
+
+  ##################### BUILD HUNTING TABLE ###################
+  def build_hunting_table(mergedBranchList, jsonModel):
+      newTable = []
+      for branch in mergedBranchList:
+          tmpDict = {}
+          tmpStr = branch[0].split('.')
+          i = 0
+          for node in tmpStr:
+              tmpDict[jsonModel[i]] = node
+              i += 1
+          for modelElement in jsonModel:
+              if not modelElement in tmpDict:
+                  tmpDict[modelElement] = ""
+          for remainder in branch[1:]:
+              for k,v in remainder.items():
+                  tmpDict[k] = v
+          newTable.append(tmpDict)
+      return newTable
+
+  #############################################################
+  ######################## MAIN ###############################
+
+  #httpArgsContent = {"method": "GET", "headers": "'Content-Type:application/json'", "url": dArgs["jsonsource"]}  # get content json
+  #httpCmdResultsContent = demisto.executeCommand("http", httpArgsContent)
+  try:
+      httpArgsModel = {"method": "GET", "headers": "'Content-Type:application/json'", "url": dArgs["jsonmodelsource"]}  # get json model that describes content
+      httpCmdResultsModel = demisto.executeCommand("http", httpArgsModel)
+
+      language = []
+      jsonModel = []
+      jsonModelSpecial = []
+      jsonGroupingDepth = 3 # default
+
+      huntingJsonModel = json.loads(httpCmdResultsModel[0]['Contents']['Body'], object_pairs_hook=OrderedDict)  # load content into JSON
+      jsonGroupingDepth = huntingJsonModel['groupingdepth']
+      outputVerbosity = huntingJsonModel['verbosity']
+      queryURL = huntingJsonModel['queryURL']
+      nwHost = huntingJsonModel['nwHost']
+      nwoHost = huntingJsonModel['nwoHost']
+      imageHost = huntingJsonModel['imageHost']
+      huntingContent = huntingJsonModel['huntingContent']
+      influencers = huntingJsonModel['influencers']
+      nwDeviceID = huntingJsonModel['nwDeviceID']
+      autoAssign = huntingJsonModel['autoAssign']
+      assigneeRole = huntingJsonModel['assigneeRole']
+
+      # Load content file now that the model (config) has been loaded
+      httpArgsContent = {"method": "GET", "headers": "'Content-Type:application/json'", "url": huntingJsonModel['huntingContent']}  # get content json
+      httpCmdResultsContent = demisto.executeCommand("http", httpArgsContent)
+      huntingJson = json.loads(httpCmdResultsContent[0]['Contents']['Body'])#, object_pairs_hook=OrderedDict)  # load content into JSON
+
+      for item in huntingJsonModel['model']:
+          if str(item).startswith('-'):# special
+              newitem = str(item)[1::]
+              jsonModelSpecial.append(newitem)
+              jsonModel.append(newitem)
+          else:
+              jsonModel.append(str(item))
+
+      for item in huntingJsonModel['language']:
+           language.append(item)
+
+      flattenedHuntingJson = flatten_dict(huntingJson)
+
+      branchList = []
+      mergedBranchList = []
+
+      branchList = build_branch_list(flattenedHuntingJson)
+      mergedBranchList = merge_dedup_branches(branchList)
+      huntingTable = build_hunting_table(mergedBranchList, jsonModel)
+      huntingTable = id_stamp(huntingTable)
+
+      # Return global vars
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted autoAssign Boolean',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'autoAssign': autoAssign}
+      })
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Auto Assign Role',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'assigneeRole': assigneeRole}
+      })
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted NetWitness Host',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'nwHost': nwHost}
+      })
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted NWO Host',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'nwoHost': nwoHost}
+      })
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Hunting Content Source',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'huntingContent': huntingContent}
+      })
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Image Host',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'imageHost': imageHost}
+      })
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted NW Query DeviceID',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'nwDeviceID': nwDeviceID}
+      })
+      # return the queryURL
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Query URL',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'QueryURL': queryURL}
+      })
+
+      # return the table
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Hunting Table',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'HuntingTable': huntingTable}
+      })
+
+      # return the model
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Hunting Model',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'HuntingModel': jsonModel}
+      })
+
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Hunting Model Special',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'HuntingModelSpecial': jsonModelSpecial}
+      })
+
+      # return grouping depth
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Grouping Depth',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'GroupingDepth': jsonGroupingDepth}
+      })
+
+      # return verbosity
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Display Verbosity',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'OutputVerbosity': outputVerbosity}
+      })
+      # output launguage
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Language',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'Language': language}
+      })
+
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Extracted Influencers',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'Influencers': influencers}
+      })
+
+  except Exception as ex:
+      demisto.results("ERROR Executing Script: " + str(ex))
+
+
+
+type: python
+tags: []
+enabled: true
+args:
+- name: modelsource
+  defaultValue: http://192.168.1.151/huntingcontentmodel.json
+outputs:
+- contextPath: HuntingTable
+- contextPath: HuntingModel
+- contextPath: GroupingDepth
+- contextPath: Language
+- contextPath: QueryURL
+- contextPath: OutputVerbosity
+- contextPath: Influencers
+scripttarget: 0
+runonce: false

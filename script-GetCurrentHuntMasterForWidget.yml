@@ -1,0 +1,46 @@
+commonfields:
+  id: c724d343-529a-4d83-88a5-145a3830fda4
+  version: 44
+name: GetCurrentHuntMasterForWidget
+script: |
+  import json
+
+  # Get current Hunt ID
+  activeHunts = demisto.executeCommand("SearchIncidents", {'query':"type:Hunt -type:\"Hunt Item\" -status:closed"})
+  nwoHost = "https://192.168.1.153" # Change this as necessary
+  biggestID = 0
+  huntID = 0
+  huntName = ""
+  createdOn = ""
+  dueDate = ""
+  huntLead = ""
+  #demisto.results(activeHunts)
+  #exit()
+
+  for hunt in activeHunts[0]['Contents']:
+      if hunt['id'] > biggestID:
+          biggestID = hunt['id']
+          huntName = hunt['name']
+          createdOn = hunt['created']
+          dueDate = hunt['dueDate']
+          huntLead = hunt['owner']
+  incidentID = biggestID
+
+
+  incidentLink = nwoHost + "/#/Details/" + incidentID
+  mdString = huntName + " [ Incident ID " + incidentID + "](" + incidentLink + ")"
+  mdString += "\n"
+  mdString += "Created On: " + createdOn.split(".")[0]
+  mdString += "\n"
+  mdString += "Due Date: " + dueDate.split(".")[0]
+  mdString += "\n"
+  mdString += "Hunt Lead: " + huntLead
+
+  demisto.results(mdString)
+  #demisto.results(res[0]['Contents']['context']['huntinglabyrinth'])
+type: python
+tags: []
+comment: "0105"
+enabled: true
+scripttarget: 0
+runonce: false

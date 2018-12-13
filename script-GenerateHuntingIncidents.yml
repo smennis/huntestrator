@@ -1,0 +1,106 @@
+commonfields:
+  id: 9f523238-26da-4fd5-86a8-03a4a4b86d15
+  version: 40
+name: GenerateHuntingIncidents
+script: |2+
+
+  huntTable = demisto.executeCommand('Print', {'value': '${HuntingTable}'})
+  huntModel = demisto.executeCommand('Print', {'value': '${HuntingModel}'})
+  huntID = demisto.executeCommand('Print', {'value': '${incident.huntingid}'})
+  huntID = huntID[0]['Contents']
+  incID = demisto.executeCommand('Print', {'value': '${incident.id}'})
+  incID = incID[0]['Contents']
+
+  updatedHuntTable = []
+  taskNameKeys = []
+  realIndex=int(incID) + 1
+  groupingDepth = 15
+  autoAssign=0
+
+  ignoreKeyList = ['query','description','refineby','threshold']
+  for keyname in huntModel:
+      #if keyname['Contents'] != 'query' and keyname['Contents'] != 'description':
+      if not keyname['Contents'] in ignoreKeyList:
+          taskNameKeys.append(keyname['Contents'])
+
+  for hunt in huntTable:
+      tmpDict = {}
+      taskNameString = ""
+
+      tmpDict = eval(hunt['Contents'])
+
+      if tmpDict['status'] == 'incomplete':  # fix this, just testing
+
+          desc = tmpDict['md'] + "\n" + tmpDict['description'] #+ "\n" + tmpDict['md']
+          j = 0
+          for key in taskNameKeys:
+              if j < groupingDepth:
+                  if len(str(tmpDict[key])) > 2:
+                      taskNameString += str(tmpDict[key]) + " > "
+              j+=1
+
+          taskNameString = taskNameString[:-3]
+          taskNameString = "[HuntID: " + huntID + "] " + taskNameString
+          tmpDict['taskname'] = taskNameString
+
+
+          if "autoAssign" in demisto.args():
+              if demisto.args()["autoAssign"] == "true":
+                  autoAssign=1
+
+          if autoAssign == 1:
+              if "assigneeRole" in demisto.args():
+                  assigneeRole = demisto.args()["assigneeRole"]
+                  randOwner = demisto.executeCommand('ReturnRandomUser', {'role':assigneeRole})
+              else:
+                  randOwner = demisto.executeCommand('ReturnRandomUser')
+              randOwner = randOwner[0]['Contents']
+              newres = demisto.executeCommand('createNewIncident', {'huntingid': huntID, 'name': taskNameString, 'type':'Hunt Item', 'owner':randOwner})
+          else:
+              randOwner = ""
+              demisto.results("no autoassign")
+              newres = demisto.executeCommand('createNewIncident', {'huntingid': huntID, 'name': taskNameString, 'type':'Hunt Item'})
+
+          tmpDict['owner'] = randOwner
+
+          #demisto.results(newres)
+          #demisto.executeCommand('addChildInvestigation', {'name': taskNameString, 'playbookName':'Hunting Investigation Task'})
+          tmpDict['investigationID'] = realIndex
+          realIndex += 1
+          updatedHuntTable.append(tmpDict)
+      else:
+          updatedHuntTable.append(tmpDict)
+
+
+  # Clear old table
+  demisto.executeCommand('DeleteContext', {'key': 'HuntingTable'})
+  demisto.executeCommand('DeleteContext', {'key': 'IsUpdated'})
+  #updatedHuntTable = huntTable
+  demisto.results({
+      'Type': entryTypes['note'],
+      'Contents': 'Updated Hunting Table MD',
+      'ContentsFormat': formats['text'],
+      'EntryContext': {'HuntingTable': updatedHuntTable}
+  })
+
+
+
+type: python
+tags: []
+comment: 0105  This script, given queries within a hunting table, will look ahead
+  and get some statistics for each one, including  session counts, influencers, etc.  Defaults
+  to last 24 hours.
+enabled: true
+args:
+- name: assigneeRole
+  description: If assigning hunting tasks to users, they will be selected randomly
+    from this role
+- name: autoAssign
+  description: '"true" if you want a random user to be assigned to each hunting task,
+    pulling from the role defined in assigneeRole arugment.  Leave blank for no auto
+    assignment'
+outputs:
+- contextPath: HuntingTable
+scripttarget: 0
+timeout: 500ns
+runonce: false

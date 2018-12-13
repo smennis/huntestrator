@@ -1,0 +1,60 @@
+commonfields:
+  id: 971cb6b6-25f8-4ed7-8043-4de6e6330dfe
+  version: 31
+name: UpdateHuntingStatus
+script: |+
+  # 0105
+
+
+  huntTable = demisto.executeCommand('Print', {'value': '${HuntingTable}'})
+  huntModel = demisto.executeCommand('Print', {'value': '${HuntingModel}'})
+  incID = demisto.executeCommand('Print', {'value': '${incident.id}'})
+  incID = int(incID[0]['Contents'])
+
+  updatedHuntTable=[]
+  hasUpdates = 0
+
+  #while hasUpdates == 0:
+  #while 1 == 1:
+  updatedHuntTable=[]
+  for hunt in huntTable:
+      tmpDict = {}
+      taskNameString = ""
+      updated = 0
+      tmpDict = eval(hunt['Contents'])
+
+      if tmpDict['status'] == 'incomplete':  # only cycle through incomplete
+          #investigationID = str(incID) + "-child-" + str(tmpDict['investigationID'])
+          investigationID = str(tmpDict['investigationID'])
+
+          incidentRecord = demisto.executeCommand("SearchIncidents", {'id': investigationID})
+          newStatus = incidentRecord[0]['Contents'][0]['status']
+
+          if newStatus == 2:
+              tmpDict['status'] = 'complete'
+              updatedHuntTable.append(tmpDict)
+              hasUpdates = 1
+              updated = 1
+
+      if updated != 1:
+          updatedHuntTable.append(tmpDict)
+
+  # Update if a change was discovered
+
+  if hasUpdates == 1:
+      demisto.executeCommand('DeleteContext', {'key': 'HuntingTable'})
+      demisto.results({
+          'Type': entryTypes['note'],
+          'Contents': 'Updated Hunting Table With Investigation Status',
+          'ContentsFormat': formats['text'],
+          'EntryContext': {'HuntingTable': updatedHuntTable}
+      })
+
+type: python
+tags: []
+enabled: true
+outputs:
+- contextPath: HuntingTable
+- contextPath: IsUpdated
+scripttarget: 0
+runonce: false

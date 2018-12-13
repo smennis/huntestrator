@@ -1,0 +1,193 @@
+id: b16d0d01-c0b4-42bf-8539-40a094af61b3
+version: 46
+name: 0105 Hunting
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 52b7981c-79d3-42b4-84cb-1d4d046fc2f2
+    type: start
+    task:
+      id: 52b7981c-79d3-42b4-84cb-1d4d046fc2f2
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 265,
+          "y": 0
+        }
+      }
+    note: false
+  "1":
+    id: "1"
+    taskid: f709abce-609d-4fa6-86be-cb498299d7c2
+    type: playbook
+    task:
+      id: f709abce-609d-4fa6-86be-cb498299d7c2
+      version: -1
+      name: Initialize Hunting Instance
+      description: |-
+        0105
+
+        Playbook loads hunting content and model from JSON and populates the Hunting Labyrinth for the first time.
+      playbookName: Initialize Hunting Instance
+      type: playbook
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "9"
+    scriptarguments:
+      imageHost:
+        simple: ${inputs.imageHost}
+      nwoHost:
+        simple: ${inputs.nwoHost}
+    separatecontext: false
+    loop:
+      iscommand: false
+      exitCondition: ""
+      wait: 1
+    view: |-
+      {
+        "position": {
+          "x": 265,
+          "y": 195
+        }
+      }
+    note: false
+  "6":
+    id: "6"
+    taskid: 43b79c77-a584-49a1-8bba-0dafbd6e4b76
+    type: regular
+    task:
+      id: 43b79c77-a584-49a1-8bba-0dafbd6e4b76
+      version: -1
+      name: Populate Hunting Table
+      scriptName: PopulateHuntingTable
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "7"
+      - "8"
+    scriptarguments:
+      imagehost:
+        simple: ${imageHost}
+      nwohost:
+        simple: ${nwoHost}
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 265,
+          "y": 545
+        }
+      }
+    note: false
+  "7":
+    id: "7"
+    taskid: c50f56fd-8c0e-4050-8aa6-0152cd892eb1
+    type: regular
+    task:
+      id: c50f56fd-8c0e-4050-8aa6-0152cd892eb1
+      version: -1
+      name: Create Hunting Update Command Schedule
+      scriptName: ScheduleCommand
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      command:
+        simple: '!UpdateHuntingStatus'
+      cron:
+        simple: '* * * * *'
+      endDate: {}
+      times: {}
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 720
+        }
+      }
+    note: false
+  "8":
+    id: "8"
+    taskid: 9a5a1aa4-fee3-4db9-82cc-20586b920e7d
+    type: regular
+    task:
+      id: 9a5a1aa4-fee3-4db9-82cc-20586b920e7d
+      version: -1
+      name: Create Table Population Schedule
+      scriptName: ScheduleCommand
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      command:
+        simple: '!PopulateHuntingTable nwohost=${nwoHost} imagehost=${imageHost}'
+      cron:
+        simple: '* * * * *'
+      endDate: {}
+      times: {}
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 480,
+          "y": 720
+        }
+      }
+    note: false
+  "9":
+    id: "9"
+    taskid: cdcac528-8872-45c2-8ff9-a9584143dc3c
+    type: regular
+    task:
+      id: cdcac528-8872-45c2-8ff9-a9584143dc3c
+      version: -1
+      name: Generate Hunting Incidents
+      scriptName: GenerateHuntingIncidents
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "6"
+    scriptarguments:
+      assigneeRole:
+        simple: ${assigneeRole}
+      autoAssign:
+        simple: ${autoAssign}
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 265,
+          "y": 370
+        }
+      }
+    note: false
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 815,
+        "width": 810,
+        "x": 50,
+        "y": 0
+      }
+    }
+  }
+inputs: []
+outputs: []

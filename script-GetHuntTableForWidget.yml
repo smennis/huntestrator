@@ -1,0 +1,34 @@
+commonfields:
+  id: d00e4c56-0a38-407f-857f-dd632fc616e2
+  version: 51
+name: GetHuntTableForWidget
+script: |2
+
+  # Find all active "Hunt" Incidents
+
+  activeHunts = demisto.executeCommand("SearchIncidents", {'query':"type:Hunt -type:\"Hunt Item\" -status:closed"})
+
+  biggestID = 0
+  for hunt in activeHunts:
+      if hunt['Contents'][0]['id'] > biggestID:
+          biggestID = hunt['Contents'][0]['id']
+
+  incidentID = biggestID # pick the newest Incident
+  #res = demisto.executeCommand("getContext", {'id': incidentID});
+  res = demisto.executeCommand("getContext", {'id': incidentID});
+  #demisto.results(res[0]['Contents']['context']['huntinglabyrinth'])
+  #exit()
+  #context = res[0]['Contents']['context']
+
+  #for key,value in res[0]['Contents']['context']:
+  #    demisto.results(key)
+  #demisto.results(res[0]['Contents']['context']['foundIncidents'][0]['CustomFields']['huntinglabyrinth'])
+  demisto.results(res[0]['Contents']['context']['huntinglabyrinth'])
+  #demisto.results(res[0]['Contents']['huntinglabyrinth'])#['context']['huntinglabyrinth'])
+  #demisto.results(res[0]['Contents']['context']['huntinglabyrinth'])
+type: python
+tags: []
+comment: "0105"
+enabled: true
+scripttarget: 0
+runonce: false

@@ -1,0 +1,32 @@
+commonfields:
+  id: 4c387110-22c6-444b-81fc-887d0103d969
+  version: 16
+name: ReturnRandomUser
+script: |2+
+
+  #0105
+  import random
+  import string
+
+  res = []
+
+  if "role" in demisto.args():
+      role = demisto.args()["role"]
+      res = demisto.executeCommand("getUsers", {'roles':role})
+  else:
+      res = demisto.executeCommand("getUsers", {})
+
+  numUsers = len(res[0]['Contents'])-1
+  userIndex = random.randint(0,numUsers)
+
+  demisto.results(res[0]['Contents'][userIndex]['id'])
+
+
+
+type: python
+tags: []
+enabled: true
+args:
+- name: role
+scripttarget: 0
+runonce: false

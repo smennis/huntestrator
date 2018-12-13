@@ -1,0 +1,165 @@
+id: 2c87f201-782a-4e0f-8bb5-3870b3374813
+version: 21
+name: Initialize Hunting Instance
+description: |-
+  0105
+
+  Playbook loads hunting content and model from JSON and populates the Hunting Labyrinth for the first time.
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 230f9f5d-6f4f-4901-818c-9e8cb7426481
+    type: start
+    task:
+      id: 230f9f5d-6f4f-4901-818c-9e8cb7426481
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 50
+        }
+      }
+    note: false
+  "1":
+    id: "1"
+    taskid: 7f6679b2-fd76-4cce-874c-8f178c904ca1
+    type: regular
+    task:
+      id: 7f6679b2-fd76-4cce-874c-8f178c904ca1
+      version: -1
+      name: LoadHuntingJson
+      scriptName: LoadHuntingJson
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "3"
+    scriptarguments:
+      endpoint: {}
+      log: {}
+      modelsource:
+        simple: ${inputs.configFile}
+      network: {}
+      source:
+        simple: ${incident.huntingcontentsource}
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 370
+        }
+      }
+    note: false
+  "3":
+    id: "3"
+    taskid: 29631976-a980-470a-8af4-93b120124dd6
+    type: regular
+    task:
+      id: 29631976-a980-470a-8af4-93b120124dd6
+      version: -1
+      name: NetWitness Lookahead
+      scriptName: NetWitnessLookAhead
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "4"
+    scriptarguments:
+      lastdays:
+        simple: ${incident.numberofdays}
+      lasthours:
+        simple: ${incident.numberofdays}
+      nwdeviceid:
+        simple: ${nwDeviceID}
+      nwurl:
+        simple: ${nwHost}
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 545
+        }
+      }
+    note: false
+  "4":
+    id: "4"
+    taskid: 5f7c81a0-2a02-4b7a-83bc-1ab0df74af01
+    type: regular
+    task:
+      id: 5f7c81a0-2a02-4b7a-83bc-1ab0df74af01
+      version: -1
+      name: Populate Hunting Table
+      scriptName: PopulateHuntingTable
+      type: regular
+      iscommand: false
+      brand: ""
+    scriptarguments:
+      imagehost:
+        simple: ${imageHost}
+      nwohost:
+        simple: ${nwoHost}
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 720
+        }
+      }
+    note: false
+  "5":
+    id: "5"
+    taskid: baffa133-8af2-43a3-85cb-d508c29ced8a
+    type: regular
+    task:
+      id: baffa133-8af2-43a3-85cb-d508c29ced8a
+      version: -1
+      name: Generate Incident Name and Hunting ID
+      scriptName: GenerateHuntingIncidentNameID
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 195
+        }
+      }
+    note: false
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 765,
+        "width": 380,
+        "x": 50,
+        "y": 50
+      }
+    }
+  }
+inputs:
+- key: configFile
+  value:
+    simple: https://raw.githubusercontent.com/smennis/nwohunt/master/content/huntingcontentmodel.json
+  required: false
+  description: ""
+outputs: []

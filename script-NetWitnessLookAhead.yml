@@ -1,0 +1,370 @@
+commonfields:
+  id: 8ab189f8-52da-454e-802e-3f6de590c24f
+  version: 6
+name: NetWitnessLookAhead
+script: |-
+  ## DOESNT WORK WITH EXTERNAL IPS AND HOSTNAMES... FIX THIS.
+  import urllib
+  import datetime
+  import time
+
+
+  size=10000
+
+  lastHours=int(demisto.args()['lastdays']) * 24
+  if lastHours == 0:
+      lastHours = 24 # Minimum if nobody sets it.
+
+
+  nwurl = demisto.args()['nwurl']
+  nwdevice = demisto.args()['nwdeviceid']
+
+
+  #for row in huntTable:
+  huntTable = demisto.executeCommand('Print', {'value': '${HuntingTable}'})
+  influencers = demisto.executeCommand('Print', {'value': '${Influencers}'})
+
+  # Deal with the special influencers
+  influencers = eval(influencers[0]['Contents'])
+  whitelistQuery = influencers['whitelist']['appendquery']
+  rarityThreshold = influencers['rarity']['threshold']
+  rarityWeight = influencers['rarity']['weight']
+  iocquery=influencers['iocs']['appendquery']
+
+  # Load custom influencers
+  custominfluencers = {}
+  for name, params in influencers.items():
+      if name != 'rarity' and name != 'whitelist':
+          custominfluencers[name] = {}
+          for key, val in params.items():
+              custominfluencers[name][key] = val
+
+  updatedHuntTable = []
+
+  ################# FUNCTION BUILD IOC LIST ##############################
+  def build_ioc_list(tmpDict, query, whitelistQuery, lastHours, size):
+
+      #iocQuery = ""
+      resultList = []
+      newList = []
+      newDict = {}
+      iocList = []
+      tmpList = []
+
+      # Should also check to make sure the first and last of such sessions are rougly 24 hours apart (continuous)
+
+      tmpResult =  demisto.executeCommand("netwitness-query", { "query": "SELECT distinct(ioc) where (" + whitelistQuery + " && " + query + ")", "lastHours": lastHours, "size": size })
+
+
+      if tmpResult[0]['Contents'] != "No results found.":
+          tmpList = tmpResult[0]['Contents']['results']['fields']
+
+
+      for ioc in tmpList:
+          tmpDict = {}
+          tmpDict['count'] = ioc['count']
+          tmpDict['ioc'] = ioc['value']
+          iocList.append(tmpDict)
+      #demisto.results(tmpResult)
+
+      #iocList = tmpResult[0]['Contents']['results']['fields']
+
+      return iocList
+
+  ################# FUNCTION FIND PERIODICITY ##############################
+  def check_for_periodicity(tmpDict, query, whitelistQuery, lastHours, size, tolerance):
+      possibleBeacon = 0
+      beaconCount = 0
+      beaconQuery = ""
+      resultList = []
+      newList = []
+      newDict = {}
+
+      minuteFreqVal = 60 * lastHours # establishes approximately how many sessions we'd see for a per-minute beacon
+      fiveMinFreqVal = 12 * lastHours
+      #toleranceVal = 0.8 # 5 % tolerance beyond vals in either direction
+      lowerBoundMin = minuteFreqVal - (tolerance * minuteFreqVal)
+      upperBoundMin = minuteFreqVal + (tolerance * minuteFreqVal)
+
+
+      # Should also check to make sure the first and last of such sessions are rougly 24 hours apart (continuous)
+      currTime = datetime.datetime.now()
+      startTime = currTime - datetime.timedelta(hours=lastHours)
+      formattedCurrTime = currTime.strftime("%Y-%b-%d %H:%M:%S")
+      formattedStartTime = startTime.strftime("%Y-%b-%d %H:%M:%S")
+      timeQuery = "(time='" + formattedStartTime + "'-'" + formattedCurrTime + "')"
+      tmpResult =  demisto.executeCommand("netwitness-query", { "query": "SELECT count(sessionid) where " + timeQuery + " && (" + whitelistQuery + " && " + query + ") group by ip.src,ip.dst", "size": size })
+      tmpList = tmpResult[0]['Contents']['results']['fields']
+
+      tmpGroups = []
+
+      beaconList = []
+      groupList = []
+      #matchingTuples = {}
+      for element in tmpList:
+          tmpCount = int(element['count'])
+          if tmpCount < lowerBoundMin:
+              continue
+          elif lowerBoundMin <= tmpCount <= upperBoundMin:
+              #tmpGroups.append(element['group'])# found a candidate
+              possibleBeacon=1
+              groupList.append(element['group'])
+
+      for group in groupList:
+          tmpDict = {}
+          for element in tmpList:
+              if element['group'] == group:
+                  if element['type'] == 'sessionid':
+                      tmpDict['count'] = element['count']
+                  else:
+                      tmpDict[element['type']] = element['value']
+          beaconList.append(tmpDict)
+
+      beaconCount = len(beaconList)
+
+      # build queryString
+
+      #beaconQuery = "("
+      beaconQuery = ""
+      for beacon in beaconList:
+          beaconQuery += "("
+          for k,v in beacon.items():
+              if k != 'count':
+                  beaconQuery += k
+                  beaconQuery += "="
+                  beaconQuery += v
+                  beaconQuery += "&&"
+          beaconQuery = beaconQuery[:-2] # get rid of last &&
+          beaconQuery += ")"
+          beaconQuery += "||"
+      beaconQuery = beaconQuery[:-2]
+      #beaconQuery += ")"
+      beaconQuery = beaconQuery.replace("&", "%26") #need to dea`l with these conversions more gracefully eventually..
+
+      return possibleBeacon, beaconList, beaconCount, beaconQuery
+  ########## END PERIODICITY FUNCTION ##############
+
+  ################# FUNCTION BUILD REFINED QUERY ##############################
+  def build_refined_query(tmpDict, query, whitelistQuery, lastHours, size, startingn):
+      refinedcount=0
+      refinedquery=query
+      resultList = []
+      refinebyarray = tmpDict['refineby'].split(',')
+
+      n = startingn
+
+      newList = []
+      newDict = {}
+      for key in refinebyarray:
+          isString = 1
+          if 'ip.' in key:
+              isString = 0
+
+          i = 0
+          newDict = {}
+          newDict[key] = ""
+          tmpResult =  demisto.executeCommand("netwitness-query", { "query": "SELECT distinct(" + key + "),count(sessionid) where " + whitelistQuery + " && " + query + " && " + key + " exists", "lastHours": lastHours, "size": size })
+          tmpList = tmpResult[0]['Contents']['results']['fields']
+          sortedlist = sorted(tmpList, key=lambda k: k['count']) #keys = sorted(attributes.keys(), reverse=True)
+
+          tmpStr = ""
+          for tmpDict in sortedlist:
+              if tmpDict['type'] != 'sessionid':
+                  if i == n:
+                      break
+                  else:
+                      if isString == 1:
+                          tmpStr += "'" + tmpDict['value'] + "'" + ","
+                      else:
+                          tmpStr += tmpDict['value'] + ","
+                      i += 1
+
+          newDict[key] = tmpStr[:-1] #trim trailing comma  #newDict now contains eg { 'ssl.ca': "Demisto", "NetWitness", "Whatev" }
+          newList.append(newDict)
+
+      # newList now contains our query addition... lets make the query
+      refinedquery += " && "
+      refinedquery += "("
+      for element in newList:
+          for key,val in element.items():
+              refinedquery += key
+              refinedquery += "="
+              refinedquery += val
+          if len(newList) > 1:
+                  refinedquery += "||"
+      refinedquery = refinedquery[:-2]
+      refinedquery += ")"
+
+
+      # finally lets get a new count of results...
+      numresults =  demisto.executeCommand("netwitness-query", { "query": "SELECT count(sessionid) where " + whitelistQuery + " && " + refinedquery, "lastHours": lastHours, "size": size })
+      refinedquery = refinedquery.replace("&", "%26") #need to dea`l with these conversions more gracefully eventually..
+
+      if numresults[0]['Contents'] != "No results found.":
+          refinedcount = int(numresults[0]['Contents']['results']['fields'][0]['value'])
+      else:
+          refinedcount = 0
+
+      return refinedcount, refinedquery
+  ###### END FUNCTION ###############################
+
+  for hunt in huntTable:
+      tmpDict = eval(hunt['Contents'])
+      query = tmpDict['query']
+      idnum = tmpDict['id']
+      tmpDict['lookahead'] = {}
+      tmpDict['status'] = "incomplete"
+      tmpDict['lookahead']['has_rarity'] = 0
+
+      # get custom influencers into lookahead
+
+      for key, val in custominfluencers.items():
+          tmpStr = 'has_' + key
+          tmpDict['lookahead'][tmpStr] = 0
+          tmpStr2 = key + "_count"
+          tmpDict['lookahead'][tmpStr2] = 0
+          #for key1, val1 in val.items():
+          #    tmpDict['lookahead'][tmpStr][key1] = val1
+
+
+      # Get Session Counts for Each Query
+      query = urllib.unquote(query).decode('utf8')
+
+      if query != "":
+          numresults =  demisto.executeCommand("netwitness-query", { "query": "SELECT count(sessionid) where " + whitelistQuery + " && " + query, "lastHours": lastHours, "size": size })
+
+          if numresults[0]['Contents'] != "No results found.":
+              count = int(numresults[0]['Contents']['results']['fields'][0]['value'])
+              if count == 0:
+                  tmpDict['status'] = 'complete'
+              else:
+
+                  #### check for potential beaconing ####
+                  if "direction='outbound'" in query:# and ("service=443" in query or "service=80" in query):
+                      for name, val in custominfluencers.items():
+                          if name == 'possiblebeacon':
+                              possibleBeacon = 0
+                              beaconCount = 0
+                              beaconQuery = ""
+                              beaconList = []
+                              beacontolerance = val['tolerance']
+                              possibleBeacon, beaconList, beaconCount, beaconQuery = check_for_periodicity(tmpDict, query, whitelistQuery, lastHours, size, beacontolerance)
+
+                              if possibleBeacon == 1:
+                                  tmpDict['lookahead']['has_possiblebeacon'] = 1
+                                  tmpDict['lookahead']['possiblebeacon_query'] = beaconQuery
+                                  tmpDict['lookahead']['possiblebeacon_values'] = beaconList
+                              else:
+                                  tmpDict['lookahead']['has_possiblebeacon']=0
+
+                  ### end check for periodicity ###
+                  if count < rarityThreshold: # This is rare, so it should bubble up to the top...
+                      tmpDict['lookahead']['has_rarity']=1
+
+                  ################ refineby and threshold ###############
+                  # IF count exceeds threshold, we need to try and refine as much as possible by our threshold keys.  Still want full results, but also want refined option
+                  if count > tmpDict['threshold'] and tmpDict['refineby'] != "":
+                      refinedcount = count
+                      thresholdBuffer = int(tmpDict['threshold']) * 2
+                      n = 20
+                      while n > 1:
+                          refinedcount, refinedquery = build_refined_query(tmpDict, query, whitelistQuery, lastHours, size, n)
+                          if refinedcount < thresholdBuffer:
+                              break
+                          n = n/2
+
+                      tmpDict['lookahead']['refinedcount'] = refinedcount
+                      tmpDict['lookahead']['refinedquery'] = refinedquery
+                      tmpDict['lookahead']['refinedlogic'] = 'rarest ' + str(n)
+
+                      for name, val in custominfluencers.items():
+                          if name != 'whitelist' and name!= 'rarity' and name!= 'possiblebeacon':  # certain influencers are special...
+                              hasStr = 'has_' + name
+                              tmpQuery = val['appendquery']
+                              tmpWeight = val['weight']
+
+                              if name != 'blacklist':
+                                  customquery = demisto.executeCommand("netwitness-query", { "query": "SELECT count(sessionid) where " + tmpQuery + " && " + whitelistQuery + " && " + query, "lastHours": lastHours, "size": size })
+                              else:
+                                  customquery = demisto.executeCommand("netwitness-query", { "query": "SELECT count(sessionid) where " + tmpQuery + " && " + query, "lastHours": lastHours, "size": size })
+                              if customquery[0]['Contents'] != "No results found.":
+                                  tmpcount = int(customquery[0]['Contents']['results']['fields'][0]['value'])
+                                  tmpDict['lookahead'][name + "_count"] = tmpcount
+                                  if tmpcount > 0:
+                                      tmpDict['lookahead'][hasStr] = 1
+
+                  ################# end refineby and threshold #############
+                  ################# Regular Query with Influencers ########
+                  else:
+                      for name, val in custominfluencers.items():
+                          if name != 'whitelist' and name!= 'rarity' and name!= 'possiblebeacon':
+                              hasStr = 'has_' + name
+                              queryStr = name + "_query"
+                              valuesStr = name + "_values"
+                              tmpDict['lookahead'][queryStr] = ""
+                              tmpDict['lookahead'][valuesStr] = ""
+                              tmpQuery = val['appendquery']
+                              tmpWeight = val['weight']
+
+                              if name != 'blacklist':
+                                  customquery = demisto.executeCommand("netwitness-query", { "query": "SELECT count(sessionid) where " + tmpQuery + " && " + whitelistQuery + " && " + query, "lastHours": lastHours, "size": size })
+                              else:
+                                  customquery = demisto.executeCommand("netwitness-query", { "query": "SELECT count(sessionid) where " + tmpQuery + " && " + query, "lastHours": lastHours, "size": size })
+
+
+                              if customquery[0]['Contents'] != "No results found.":
+                                  tmpcount = int(customquery[0]['Contents']['results']['fields'][0]['value'])
+                                  tmpDict['lookahead'][name + "_count"] = tmpcount
+                                  if tmpcount > 0:
+                                      tmpDict['lookahead'][hasStr] = 1
+
+                                  # special handling of iocs
+                                  if name == 'iocs':
+                                      iocList = build_ioc_list(tmpDict, query, whitelistQuery, lastHours, size)
+                                      tmpDict['lookahead'][valuesStr] = iocList
+                                      #tesdt
+                                      queryStrVal = query + " && (" + iocquery + ")"
+                                      queryStrVal = queryStrVal.replace("&", "%26")
+                                      queryStrVal = queryStrVal.replace("|", "%7C")
+                                      queryStrVal = queryStrVal.replace(" ", "%20")
+                                      tmpDict['lookahead'][queryStr] = queryStrVal
+                  ################# end regular query and influencers ######### (function this)
+          else:
+              tmpDict['status'] = 'complete'
+              count = 0
+      else:
+          tmpDict['status'] = 'noquery'
+          countwithiocs = 0
+          count = -1
+
+      tmpDict['lookahead']['count'] = count
+      updatedHuntTable.append(tmpDict)
+
+  demisto.executeCommand('DeleteContext', {'key': 'HuntingTable'})
+  demisto.results({
+      'Type': entryTypes['note'],
+      'Contents': 'Updated Hunting Table with Counts',
+      'ContentsFormat': formats['text'],
+      'EntryContext': {'HuntingTable': updatedHuntTable}
+  })
+type: python
+tags: []
+comment: 0105  This script, given queries within a hunting table, will look ahead
+  and get some statistics for each one, including  session counts, influencers, etc.  Defaults
+  to last 24 hours.
+enabled: true
+args:
+- name: lastdays
+  required: true
+  defaultValue: "1"
+- name: nwurl
+  required: true
+  defaultValue: https://192.168.1.129
+- name: nwdeviceid
+  required: true
+  defaultValue: "12"
+outputs:
+- contextPath: HuntingTable
+scripttarget: 0
+timeout: 500ns
+runonce: false

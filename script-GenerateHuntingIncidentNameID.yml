@@ -1,0 +1,26 @@
+commonfields:
+  id: 8e55af43-a3b2-4eab-872e-3af5a577529b
+  version: 14
+name: GenerateHuntingIncidentNameID
+script: |+
+  #0105
+  import random
+  import string
+  import datetime
+  import time
+
+  randchars = ''.join([random.choice(string.ascii_letters + string.digits) for n in xrange(3)])
+  currTime = datetime.datetime.now()
+  num = random.randint(100,999)
+  huntID = currTime.strftime("%y%m%d") + "." + str(num)
+  incidentName = "[HuntID: " + huntID + "] Hunt Master"
+
+  demisto.executeCommand('setIncident', {'name': incidentName})
+  demisto.executeCommand('setIncident', {'huntingid': huntID})
+
+
+type: python
+tags: []
+enabled: true
+scripttarget: 0
+runonce: false

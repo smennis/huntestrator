@@ -1,0 +1,217 @@
+{
+	"id": "5",
+	"version": 16,
+	"modified": "2018-11-20T09:33:15.249174551-08:00",
+	"fromDate": "0001-01-01T00:00:00Z",
+	"toDate": "0001-01-01T00:00:00Z",
+	"period": {
+		"byTo": "",
+		"byFrom": "days",
+		"toValue": null,
+		"fromValue": 7,
+		"field": ""
+	},
+	"fromDateLicense": "0001-01-01T00:00:00Z",
+	"name": "Daily Hunting ",
+	"layout": [
+		{
+			"id": "e6749d90-e1e6-11e8-8031-fbcdf8333293",
+			"forceRange": false,
+			"x": 9,
+			"y": 1,
+			"i": "e6749d90-e1e6-11e8-8031-fbcdf8333293",
+			"w": 3,
+			"h": 1,
+			"widget": {
+				"id": "ef13aa12-f1da-47ac-8181-ca491230228b",
+				"version": 1,
+				"modified": "2018-09-14T17:28:04.261240283-07:00",
+				"name": "Hunt Master Record",
+				"dataType": "scripts",
+				"widgetType": "text",
+				"query": "GetCurrentHuntMasterForWidget",
+				"sort": null,
+				"isPredefined": false,
+				"dateRange": {
+					"fromDate": "0001-01-01T00:00:00Z",
+					"toDate": "0001-01-01T00:00:00Z",
+					"period": {
+						"byTo": "",
+						"byFrom": "",
+						"toValue": null,
+						"fromValue": null,
+						"field": ""
+					},
+					"fromDateLicense": "0001-01-01T00:00:00Z"
+				},
+				"params": null,
+				"size": 0,
+				"category": ""
+			}
+		},
+		{
+			"id": "eae8e7a0-e1e6-11e8-8031-fbcdf8333293",
+			"forceRange": false,
+			"x": 9,
+			"y": 2,
+			"i": "eae8e7a0-e1e6-11e8-8031-fbcdf8333293",
+			"w": 3,
+			"h": 2,
+			"widget": {
+				"id": "d751fe05-f880-4881-8151-66a637c26679",
+				"version": 1,
+				"modified": "2018-09-13T17:21:35.169884306-07:00",
+				"name": "Hunting Task Status",
+				"dataType": "scripts",
+				"widgetType": "pie",
+				"query": "GetHuntStatusCountForWidget",
+				"sort": null,
+				"isPredefined": false,
+				"dateRange": {
+					"fromDate": "0001-01-01T00:00:00Z",
+					"toDate": "0001-01-01T00:00:00Z",
+					"period": {
+						"byTo": "",
+						"byFrom": "",
+						"toValue": null,
+						"fromValue": null,
+						"field": ""
+					},
+					"fromDateLicense": "0001-01-01T00:00:00Z"
+				},
+				"params": null,
+				"size": 0,
+				"category": ""
+			}
+		},
+		{
+			"id": "ee47f120-e1e6-11e8-8031-fbcdf8333293",
+			"forceRange": false,
+			"x": 9,
+			"y": 4,
+			"i": "ee47f120-e1e6-11e8-8031-fbcdf8333293",
+			"w": 3,
+			"h": 2,
+			"widget": {
+				"id": "f9fd959a-04f3-4a44-8ba9-861752f6617b",
+				"version": 2,
+				"modified": "2018-09-13T17:31:20.530098236-07:00",
+				"name": "Hunting Team",
+				"dataType": "scripts",
+				"widgetType": "table",
+				"query": "GetHuntParticipants",
+				"sort": null,
+				"isPredefined": false,
+				"dateRange": {
+					"fromDate": "0001-01-01T00:00:00Z",
+					"toDate": "0001-01-01T00:00:00Z",
+					"period": {
+						"byTo": "",
+						"byFrom": "days",
+						"toValue": null,
+						"fromValue": null,
+						"field": ""
+					},
+					"fromDateLicense": "0001-01-01T00:00:00Z"
+				},
+				"params": {},
+				"size": 0,
+				"category": ""
+			}
+		},
+		{
+			"id": "d8880480-e441-11e8-9cf0-231886319f96",
+			"forceRange": false,
+			"x": 9,
+			"y": 0,
+			"i": "d8880480-e441-11e8-9cf0-231886319f96",
+			"w": 3,
+			"h": 1,
+			"widget": {
+				"id": "1911e0c0-f63b-4624-8fc9-8524c7889716",
+				"version": 1,
+				"modified": "2018-11-08T11:48:23.161768827-08:00",
+				"name": "Completed Hunts This Month",
+				"dataType": "incidents",
+				"widgetType": "trend",
+				"query": "-status:closed -category:job type:\"Hunt Item\" owner:eric",
+				"sort": null,
+				"isPredefined": false,
+				"dateRange": {
+					"fromDate": "0001-01-01T00:00:00Z",
+					"toDate": "0001-01-01T00:00:00Z",
+					"period": {
+						"byTo": "",
+						"byFrom": "days",
+						"toValue": null,
+						"fromValue": 7,
+						"field": ""
+					},
+					"fromDateLicense": "0001-01-01T00:00:00Z"
+				},
+				"params": {
+					"colors": {
+						"isEnabled": true,
+						"items": {
+							"#00CD33": {
+								"value": 5
+							},
+							"#32D296": {
+								"value": 6
+							},
+							"#FAC100": {
+								"value": 3
+							},
+							"#FF1B15": {
+								"value": 2
+							}
+						},
+						"type": "below"
+					}
+				},
+				"size": 0,
+				"category": ""
+			}
+		},
+		{
+			"id": "c7fa7ba0-e448-11e8-b633-e3cf4e0afb1e",
+			"forceRange": false,
+			"x": 0,
+			"y": 0,
+			"i": "c7fa7ba0-e448-11e8-b633-e3cf4e0afb1e",
+			"w": 9,
+			"h": 6,
+			"widget": {
+				"id": "3faf86b5-b752-4b33-8a90-d3d247cb6a36",
+				"version": 4,
+				"modified": "2018-09-13T11:06:37.654842109-07:00",
+				"name": "Daily Hunting Table",
+				"dataType": "scripts",
+				"widgetType": "text",
+				"query": "GetHuntTableForWidget",
+				"sort": null,
+				"isPredefined": false,
+				"dateRange": {
+					"fromDate": "2018-09-13T00:00:00-07:00",
+					"toDate": "0001-01-01T00:00:00Z",
+					"period": {
+						"byTo": "",
+						"byFrom": "days",
+						"toValue": null,
+						"fromValue": 0,
+						"field": ""
+					},
+					"fromDateLicense": "0001-01-01T00:00:00Z"
+				},
+				"params": {
+					"text": ""
+				},
+				"size": 0,
+				"category": ""
+			}
+		}
+	],
+	"isPredefined": false,
+	"shared": true,
+	"owner": "admin"
+}

@@ -1,0 +1,95 @@
+id: c5b658be-d9ff-4295-8f01-aa985e491127
+version: 10
+name: Hunting Investigation Playbook
+description: "0105"
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: 5b99a7aa-e8ca-4975-8135-4d504f63b535
+    type: start
+    task:
+      id: 5b99a7aa-e8ca-4975-8135-4d504f63b535
+      version: -1
+      name: ""
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "5"
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 50
+        }
+      }
+    note: false
+  "1":
+    id: "1"
+    taskid: 552a637e-d1ba-4a3e-81fc-25055c31c0a1
+    type: regular
+    task:
+      id: 552a637e-d1ba-4a3e-81fc-25055c31c0a1
+      version: -1
+      name: Perform the Hunt
+      type: regular
+      iscommand: false
+      brand: ""
+    separatecontext: false
+    defaultassigneecomplex:
+      simple: ${incident.owner}
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 370
+        }
+      }
+    note: false
+  "5":
+    id: "5"
+    taskid: f8a9520a-7d2d-4e0c-8ee2-45d868cbc32b
+    type: regular
+    task:
+      id: f8a9520a-7d2d-4e0c-8ee2-45d868cbc32b
+      version: -1
+      name: Assign Hunter to Task
+      scriptName: AssignAnalystToIncident
+      type: regular
+      iscommand: false
+      brand: ""
+    nexttasks:
+      '#none#':
+      - "1"
+    scriptarguments:
+      assignBy:
+        simple: random
+      email: {}
+      roles:
+        simple: Hunter
+      username: {}
+    separatecontext: false
+    view: |-
+      {
+        "position": {
+          "x": 50,
+          "y": 195
+        }
+      }
+    note: false
+view: |-
+  {
+    "linkLabelsPosition": {},
+    "paper": {
+      "dimensions": {
+        "height": 415,
+        "width": 380,
+        "x": 50,
+        "y": 50
+      }
+    }
+  }
+inputs: []
+outputs: []
